@@ -2,6 +2,9 @@
 #include "image_transport/image_transport.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "cv_bridge/cv_bridge.h"
+
+using namespace std::chrono_literals;
 
 class SimpleCam : public rclcpp::Node
 {
@@ -10,6 +13,8 @@ public:
       : Node("SimpleCam")
   {
     publisher_ = this->create_publisher<sensor_msgs::msg::Image>("image", 10);
+    timer_ = this->create_wall_timer(1.666ms, std::bind(&SimpleCam::read, this));
+    setup_stream();
   }
 
   std::string gstreamer_pipeline(int capture_width, int capture_height, int display_width, int display_height, int framerate, int flip_method)
@@ -20,7 +25,7 @@ public:
            std::to_string(display_height) + ", format=(string)BGRx ! videoconvert ! video/x-raw, format=(string)BGR ! appsink";
   }
 
-  void setup()
+  void setup_stream()
   {
     pipeline = gstreamer_pipeline(capture_width, 
                                   capture_height,
@@ -41,22 +46,19 @@ public:
 
   void read()
   {
-    if (!cap_.read(img_))
+    if (!cap_.read(frame_))
     {
       RCLCPP_WARN(this->get_logger(),"Capture read error");
     }
     else
     {
-      RCLCPP_INFO(this->get_logger(),"Read Message");
+      // this is gross, but it seems to be working.  
+      // Convert the OpenCV image to a ROS Image message
+      auto msg_ = cv_bridge::CvImage(hdr_, "bgr8", frame_).toImageMsg();
+      msg_->header.stamp = this->get_clock()->now();
+      publisher_->publish(*msg_);
+      //RCLCPP_INFO(this->get_logger(),"Read Message");
     }
-
-    // std::cout << "Frame size: " << img.cols << " x " << img.rows << std::endl;
-    // std::cout << "Frame type: " << img.type() << std::endl;
-    // // Save the frame to a file
-    // std::ostringstream filename;
-    // filename << "frame_" << std::setw(5) << std::setfill('0') << frameNumber << ".bmp";
-    // cv::imwrite(filename.str(), img);
-    // std::cout << "Saved: " << filename.str() << std::endl;
 
     //cap.release();
   }
@@ -64,17 +66,22 @@ public:
 private:
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr publisher_;
   rclcpp::TimerBase::SharedPtr timer_;
+
+  //sensor_msgs::msg::Image msg_;
+  std_msgs::msg::Header hdr_;
+
+  //for image data
   cv::VideoCapture cap_;
-  cv::Mat img_;
+  cv::Mat frame_;
 
   std::string pipeline; 
 
-  int frameNumber = 0;
+  //parameters we are going to need
   int capture_width = 1280;
   int capture_height = 720;
   int display_width = 1280;
   int display_height = 720;
-  int framerate = 30;
+  int framerate = 60;
   int flip_method = 2;
 };
 

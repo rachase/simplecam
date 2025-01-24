@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+    
+    <!-- Joystick Controller -->
+    <node pkg="simplecam" name="simplecam_node" exec="picamcsi" output="screen"></node>
+
+</launch>
